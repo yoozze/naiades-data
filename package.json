@@ -1,8 +1,14 @@
 {
-    "name": "data",
+    "name": "naiades-data",
     "version": "0.1.0",
     "private": true,
     "scripts": {
+        "docker:build": "docker-compose -p naiades-data build --no-cache",
+        "docker:build:dev": "docker-compose -f docker-compose.dev.yml -p naiades-data build",
+        "docker:start": "docker-compose -p naiades-data up -d --force-recreate",
+        "docker:start:dev": "docker-compose -f docker-compose.dev.yml -p naiades-data up -d",
+        "docker:log": "docker-compose -p naiades-data logs -f",
+        "docker:stop": "docker-compose -p naiades-data down --remove-orphans -v",
         "dev": "nodemon src/index.ts",
         "build": "tsc --project ./",
         "start": "node index.js",

@@ -26,7 +26,7 @@ function main() {
     app.use(handleErrors);
 
     // Start up server.
-    const port = Number(process.env.PORT || 8081);
+    const port = Number(process.env.PORT || 8080);
     app.listen(port, () => {
         console.info(`Listening on port ${port}.`);
     });
