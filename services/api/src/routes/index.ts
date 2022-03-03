@@ -4,7 +4,7 @@ import * as data from '../controllers/data';
 
 const router = Router();
 
-const seriesPath = '/series';
+const seriesPath = '/:sensor/series';
 router.get(`${seriesPath}`, data.getSeries);
 router.get(`${seriesPath}/last`, data.getLastDataPoint);
 

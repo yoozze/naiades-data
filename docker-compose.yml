@@ -1,16 +1,30 @@
 version: '3.4'
 
 services:
+    adapter:
+        build:
+            context: .
+            dockerfile: ./services/adapter/Dockerfile
+            args:
+                ROOT: ./services/adapter
+        volumes:
+            # - ./services/adapter:/app
+            - data:/app/dump
+        restart: unless-stopped
+
     api:
         build:
             context: .
-            dockerfile: ./Dockerfile
+            dockerfile: ./services/api/Dockerfile
             args:
-                ROOT: ./
+                ROOT: ./services/api
         volumes:
-            - ./:/app
-            - /app/node_modules
+            # - ./services/api:/app
+            # - /app/node_modules
+            - data:/app/dump
         ports:
             - ${PORT:-3000}:8080
-        # restart: unless-stopped
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+        restart: unless-stopped
+
+volumes:
+    data:

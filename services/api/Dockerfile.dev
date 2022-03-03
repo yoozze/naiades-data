@@ -5,6 +5,9 @@ ENV NODE_ENV=development
 
 WORKDIR /app
 
+# Install dependencies
+RUN apk add --no-cache python3
+
 COPY $ROOT/package*.json ./
 RUN npm install
 

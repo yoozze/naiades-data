@@ -13,8 +13,18 @@ interface DataPoint {
     [attribute: string]: number | string | null;
 }
 
-function getDataFilePath(): string {
-    return path.resolve('files', 'data.csv');
+function getDataFilePath(sensor: string): string {
+    console.log('sensor', sensor);
+    const fileName = `${sensor.replace(/-/g, '_')}.csv`;
+    const filePath = path.resolve('dump', fileName);
+    console.log('fileName', fileName);
+    console.log('filePath', filePath);
+
+    if (!fs.existsSync(filePath)) {
+        return '';
+    }
+    
+    return filePath;
 }
 
 export async function readSeries(filePath: string, from?: Date, to?: Date): Promise<DataPoint[]> {
@@ -27,7 +37,7 @@ export async function readSeries(filePath: string, from?: Date, to?: Date): Prom
             input: fileStream,
             crlfDelay: Infinity,
         });
-        const readFirstLines = (line: string) => {
+        const readLines = (line: string) => {
             const parsedLine = csvParse(line)[0];
             const date = new Date(Math.abs(parseInt(parsedLine[0], 10)));
 
@@ -36,7 +46,7 @@ export async function readSeries(filePath: string, from?: Date, to?: Date): Prom
             }
         };
 
-        rl.on('line', readFirstLines);
+        rl.on('line', readLines);
         await once(rl, 'close');
 
         const [header, ...rows] = lines;
@@ -65,27 +75,38 @@ export async function readLastDataPoint(filePath: string): Promise<DataPoint | n
             input: fileStream,
             crlfDelay: Infinity,
         });
-        const readFirstLines = (line: string) => {
+        const readLines = (line: string) => {
             lines.push(...csvParse(line));
 
-            if (lines.length > 1) {
-                rl.off('line', readFirstLines).close();
-            }
+            // if (lines.length > 1) {
+            //     rl.off('line', readFirstLines).close();
+            // }
         };
 
-        rl.on('line', readFirstLines);
+        rl.on('line', readLines);
         await once(rl, 'close');
 
-        if (lines.length === 2 && lines[0].length === lines[1].length) {
-            const [header, row] = lines;
-            header.forEach((h, i) => {
-                if (dataPoint === null) {
-                    dataPoint = {};
-                }
+        const [header, ...rows] = lines;
 
-                dataPoint[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
+        if (rows.length > 0) {
+            const row = rows[rows.length - 1];
+            const dp: DataPoint = {};
+            header.forEach((h, i) => {
+                dp[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
             });
+            dataPoint = dp;
         }
+
+        // if (lines.length === 2 && lines[0].length === lines[1].length) {
+        //     const [header, row] = lines;
+        //     header.forEach((h, i) => {
+        //         if (dataPoint === null) {
+        //             dataPoint = {};
+        //         }
+
+        //         dataPoint[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
+        //     });
+        // }
     } catch {
         // Failed to read attributes.
     }
@@ -95,7 +116,14 @@ export async function readLastDataPoint(filePath: string): Promise<DataPoint | n
 
 export async function getSeries(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const filePath = getDataFilePath();
+        const filePath = getDataFilePath(req.params.sensor);
+        if (!filePath) {
+            res.status(500).json({
+                error: `Invalid sensor: ${req.params.sensor}`
+            });
+            return;
+        }
+
         const series = await readSeries(
             filePath,
             req.query.from ? new Date(`${req.query.from}`) : undefined,
@@ -124,8 +152,17 @@ export async function getLastDataPoint(
     res: Response,
     next: NextFunction
 ): Promise<void> {
+    console.log(req.params);
+    
     try {
-        const filePath = getDataFilePath();
+        const filePath = getDataFilePath(req.params.sensor);
+        if (!filePath) {
+            res.status(500).json({
+                error: `Invalid sensor: ${req.params.sensor}`
+            });
+            return;
+        }
+
         const lastDataPoint = await readLastDataPoint(filePath);
         res.status(200).json({
             series: [lastDataPoint],

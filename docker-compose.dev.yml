@@ -1,15 +1,28 @@
 version: '3.4'
 
 services:
+    adapter:
+        build:
+            context: .
+            dockerfile: ./services/adapter/Dockerfile.dev
+            args:
+                ROOT: ./services/adapter
+        volumes:
+            # - ./services/adapter:/app
+            - data:/app/dump
+
     api:
         build:
             context: .
-            dockerfile: ./Dockerfile.dev
+            dockerfile: ./services/api/Dockerfile.dev
             args:
-                ROOT: ./
+                ROOT: ./services/api
         volumes:
-            - ./:/app
+            - ./services/api:/app
             - /app/node_modules
+            - data:/app/dump
         ports:
             - ${PORT:-3000}:8080
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
+
+volumes:
+    data:

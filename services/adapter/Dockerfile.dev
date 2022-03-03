@@ -1,0 +1,19 @@
+FROM python:3.7.12-alpine3.14
+
+ARG ROOT
+ENV NODE_ENV=development
+
+WORKDIR /app
+
+# Install dependencies
+RUN apk add --no-cache git
+
+# Get FIWARE-adapter
+RUN git clone https://github.com/naiades-jsi/naiades-toolkit.git
+RUN cp -a naiades-toolkit/FIWARE-adapter/. .
+
+# Install python requirements
+RUN pip install -r requirements.txt
+RUN pip install influxdb-client
+
+CMD ["python", "./main.py", "-c", "productionStreamStory/downloadScheduler.json"]
