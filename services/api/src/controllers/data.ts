@@ -23,95 +23,82 @@ function getDataFilePath(sensor: string): string {
     if (!fs.existsSync(filePath)) {
         return '';
     }
-    
+
     return filePath;
 }
 
-export async function readSeries(filePath: string, from?: Date, to?: Date): Promise<DataPoint[]> {
-    const data: DataPoint[] = [];
-
-    try {
-        const lines: string[][] = [];
-        const fileStream = fs.createReadStream(filePath);
-        const rl = readline.createInterface({
-            input: fileStream,
-            crlfDelay: Infinity,
-        });
-        const readLines = (line: string) => {
-            const parsedLine = csvParse(line)[0];
-            const date = new Date(Math.abs(parseInt(parsedLine[0], 10)));
-
-            if (!((from && date < from) || (to && date > to))) {
-                lines.push(parsedLine);
-            }
-        };
-
-        rl.on('line', readLines);
-        await once(rl, 'close');
-
-        const [header, ...rows] = lines;
-
-        rows.forEach((row) => {
-            const dataPoint: DataPoint = {};
-            header.forEach((h, i) => {
-                dataPoint[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
-            });
-            data.push(dataPoint);
-        });
-    } catch {
-        // Failed to read attributes.
-    }
-
-    return data;
+function getTimeStamp(line: string) {
+    const i = line.indexOf(',');
+    return Number(line.substring(0, i).trim());
 }
 
-export async function readLastDataPoint(filePath: string): Promise<DataPoint | null> {
-    let dataPoint: DataPoint | null = null;
+function csvToJson(headerLine: string, dataLines: string[]) {
+    const headerRow = headerLine.split(',');
+    const series: DataPoint[] = [];
+
+    dataLines.forEach((dataLine) => {
+        const dataRow = dataLine.split(',');
+
+        if (dataRow.length !== headerRow.length) {
+            return;
+        }
+
+        const dataPoint: DataPoint = {};
+        headerRow.forEach((h, i) => {
+            dataPoint[h] = isNumeric(dataRow[i]) ? parseFloat(dataRow[i]) : dataRow[i];
+        });
+        series.push(dataPoint);
+    });
+
+    return series;
+}
+
+async function readSeries(filePath: string, from?: number, to?: number) {
+    const series: string[] = [];
 
     try {
-        const lines: string[][] = [];
         const fileStream = fs.createReadStream(filePath);
         const rl = readline.createInterface({
             input: fileStream,
             crlfDelay: Infinity,
         });
-        const readLines = (line: string) => {
-            lines.push(...csvParse(line));
 
-            // if (lines.length > 1) {
-            //     rl.off('line', readFirstLines).close();
-            // }
+        let count = 0;
+        let currentLine = '';
+        const readLines = (line: string) => {
+            if (count === 0) {
+                series.push(line);
+                count += 1;
+                return;
+            }
+
+            const timeStamp = getTimeStamp(line);
+
+            if (Number.isNaN(timeStamp)) {
+                return;
+            }
+
+            if (!((from && timeStamp < from) || (to && timeStamp > to))) {
+                series.push(line);
+                count += 1;
+            } else if (count > 1) {
+                rl.off('line', readLines).close();
+            }
+
+            currentLine = line;
         };
 
         rl.on('line', readLines);
         await once(rl, 'close');
 
-        const [header, ...rows] = lines;
-
-        if (rows.length > 0) {
-            const row = rows[rows.length - 1];
-            const dp: DataPoint = {};
-            header.forEach((h, i) => {
-                dp[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
-            });
-            dataPoint = dp;
+        if (from === -1 && to === -1) {
+            series.push(currentLine);
         }
-
-        // if (lines.length === 2 && lines[0].length === lines[1].length) {
-        //     const [header, row] = lines;
-        //     header.forEach((h, i) => {
-        //         if (dataPoint === null) {
-        //             dataPoint = {};
-        //         }
-
-        //         dataPoint[h] = isNumeric(row[i]) ? parseFloat(row[i]) : row[i];
-        //     });
-        // }
-    } catch {
-        // Failed to read attributes.
+    } catch (error) {
+        // Failed to read series.
     }
 
-    return dataPoint;
+    return series;
 }
 
 export async function getSeries(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -119,26 +106,26 @@ export async function getSeries(req: Request, res: Response, next: NextFunction)
         const filePath = getDataFilePath(req.params.sensor);
         if (!filePath) {
             res.status(500).json({
-                error: `Invalid sensor: ${req.params.sensor}`
+                error: `Invalid sensor: ${req.params.sensor}`,
             });
             return;
         }
 
-        const series = await readSeries(
+        const lines = await readSeries(
             filePath,
-            req.query.from ? new Date(`${req.query.from}`) : undefined,
-            req.query.to ? new Date(`${req.query.to}`) : undefined
+            req.query.from ? new Date(`${req.query.from}`).getTime() / 1000 : undefined,
+            req.query.to ? new Date(`${req.query.to}`).getTime() / 1000 : undefined
         );
 
         if (req.query.format === 'csv') {
-            const json2csv = new Parser({ fields: series.length ? Object.keys(series[0]) : [] });
-            const csv = json2csv.parse(series);
             res.header('Content-Type', 'text/csv');
             res.attachment('data.csv');
-            res.status(200).send(csv);
+            res.status(200).send(lines.join('\r\n'));
             return;
         }
 
+        const [header, ...data] = lines;
+        const series = csvToJson(header, data);
         res.status(200).json({
             series,
         });
@@ -153,19 +140,28 @@ export async function getLastDataPoint(
     next: NextFunction
 ): Promise<void> {
     console.log(req.params);
-    
+
     try {
         const filePath = getDataFilePath(req.params.sensor);
         if (!filePath) {
             res.status(500).json({
-                error: `Invalid sensor: ${req.params.sensor}`
+                error: `Invalid sensor: ${req.params.sensor}`,
             });
             return;
         }
 
-        const lastDataPoint = await readLastDataPoint(filePath);
+        const lines = await readSeries(filePath, -1, -1);
+
+        if (req.query.format === 'csv') {
+            res.header('Content-Type', 'text/csv');
+            res.attachment('data.csv');
+            res.status(200).send(lines.join('\r\n'));
+        }
+
+        const [header, ...data] = lines;
+        const series = csvToJson(header, data);
         res.status(200).json({
-            series: [lastDataPoint],
+            series,
         });
     } catch (error) {
         next(error);
