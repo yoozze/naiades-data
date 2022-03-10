@@ -4,8 +4,6 @@ import { once } from 'events';
 import readline from 'readline';
 
 import { NextFunction, Request, Response } from 'express';
-import { Parser } from 'json2csv';
-import csvParse from 'csv-parse/lib/sync';
 
 import { isNumeric } from '../utils/misc';
 
