@@ -2,27 +2,32 @@ import fs from 'fs';
 import path from 'path';
 import { once } from 'events';
 import readline from 'readline';
+import { spawn } from 'child_process';
 
 import { NextFunction, Request, Response } from 'express';
 
-import { isNumeric } from '../utils/misc';
+import { getRandomString, isNumeric } from '../utils/misc';
 
 interface DataPoint {
     [attribute: string]: number | string | null;
 }
 
 function getDataFilePath(sensor: string): string {
-    console.log('sensor', sensor);
     const fileName = `${sensor.replace(/-/g, '_')}.csv`;
     const filePath = path.resolve('dump', fileName);
-    console.log('fileName', fileName);
-    console.log('filePath', filePath);
 
     if (!fs.existsSync(filePath)) {
         return '';
     }
 
     return filePath;
+}
+
+function getTempDataFilePath(filePath: string): string {
+    const tempFilePath = filePath
+        .replace('/dump/', '/cache/')
+        .replace(/\.([^.]+)$/, `.${getRandomString(32)}.$1`);
+    return tempFilePath;
 }
 
 function getTimeStamp(line: string) {
@@ -49,6 +54,30 @@ function csvToJson(headerLine: string, dataLines: string[]) {
     });
 
     return series;
+}
+
+async function processData(
+    inputFilePath: string,
+    outputFilePath: string,
+    interval: number
+): Promise<boolean> {
+    return new Promise((resolve, reject): void => {
+        try {
+            const cmd = 'python3';
+            const args = [
+                'scripts/run.py',
+                `-i${inputFilePath}`,
+                `-o${outputFilePath}`,
+                `-d${interval}`,
+            ];
+            const python = spawn(cmd, args);
+            python.on('exit', () => {
+                resolve(true);
+            });
+        } catch (error) {
+            reject(error);
+        }
+    });
 }
 
 async function readSeries(filePath: string, from?: number, to?: number) {
@@ -99,21 +128,61 @@ async function readSeries(filePath: string, from?: number, to?: number) {
     return series;
 }
 
+function deleteTempFiles(filePath: string) {
+    try {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        const tempFilePath = `${filePath}.temp`;
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
+    } catch (error) {
+        console.log(error);
+    }
+}
+
 export async function getSeries(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const filePath = getDataFilePath(req.params.sensor);
-        if (!filePath) {
+        const inputFilePath = getDataFilePath(req.params.sensor);
+        if (!inputFilePath) {
             res.status(500).json({
                 error: `Invalid sensor: ${req.params.sensor}`,
             });
             return;
         }
 
+        // const interval = Math.abs(Number(req.query.interval) || 3600);
+        const interval = Number(req.query.interval);
+        let outputFilePath = '';
+
+        if (interval && interval > 0) {
+            console.log(
+                `Processing data from sensor ${req.params.sensor} with interval ${interval}`
+            );
+
+            outputFilePath = getTempDataFilePath(inputFilePath);
+            const success = await processData(inputFilePath, outputFilePath, interval);
+
+            if (!success) {
+                deleteTempFiles(outputFilePath);
+                res.status(500).json({
+                    error: 'Data preprocessing failed',
+                });
+                return;
+            }
+        }
+
         const lines = await readSeries(
-            filePath,
+            outputFilePath || inputFilePath,
             req.query.from ? new Date(`${req.query.from}`).getTime() / 1000 : undefined,
             req.query.to ? new Date(`${req.query.to}`).getTime() / 1000 : undefined
         );
+
+        if (outputFilePath) {
+            deleteTempFiles(outputFilePath);
+        }
 
         if (req.query.format === 'csv') {
             res.header('Content-Type', 'text/csv');

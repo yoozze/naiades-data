@@ -30,8 +30,12 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
+# Install runtime packages
+RUN apk add --no-cache python3
+
 # Copy from build stage
 COPY --from=build-stage /app/build /app
+COPY --from=build-stage /app/scripts /app/scripts
 COPY --from=build-stage /app/package*.json /app/
 
 # Install production dependencies
