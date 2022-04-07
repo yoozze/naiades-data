@@ -17,7 +17,7 @@ def main(argv):
     # Read input arguments
     try:
         opts, args = getopt.getopt(
-            argv, "hi:o:d:", ["ifile=", "dtime="])
+            argv, "hi:o:d:", ["ifile=", "ifile=", "dtime="])
     except getopt.GetoptError:
         print(cliHelp)
         sys.exit(2)
