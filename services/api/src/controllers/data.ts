@@ -125,6 +125,12 @@ async function readSeries(filePath: string, from?: number, to?: number) {
         // Failed to read series.
     }
 
+    if (series.length > 0) {
+        // Fix time column header name.
+        const headers = series[0].split(/\s*,\s*/);
+        series[0] = ['time', ...headers.slice(1)].join(',');
+    }
+
     return series;
 }
 
